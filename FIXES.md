@@ -28,6 +28,24 @@ encoding, fixing left-HP single-ended LVCMOS inputs.
 Propagated SING-row bits and added the `iob18_sing` sub-fuzzer so HP-only
 columns get correct SING-row geometry.
 
+## Top-SING tile alias start_offset (OLOGIC/IOB "invalid word address")
+`tilegrid.json`: the **top** SING-row tiles (`LIOI_SING`/`RIOI_SING`/`LIOB18_SING`/
+`RIOB18_SING` at `bits.CLB_IO_CLK.offset == 99`) had alias `start_offset: 0`,
+but it must be **2** (matching the bottom SING tiles at `offset 0`). With
+`start_offset 0` the aliased regular OLOGIC_Y0 / IOB features (regular words
+2–3) mapped to absolute frame words 101–102, which don't exist — fasm2frames
+emitted `invalid word address` and silently dropped them (e.g. VC707 counter
+LED on `LIOI_SING_X82Y51.OLOGIC_Y0.OMUX.D1`). With `start_offset 2` the
+effective offset becomes `99-2=97`, so regular word 3 → abs 100, word 2 → abs
+99 — landing in the tile's real 2-word window.
+
+Confirmed empirically: fuzzer `036-iob18-ologic-sing` (re-run at N=50) places
+`OLOGIC_Y0.OMUX.D1` at abs word 100, exactly what `start_offset 2` produces.
+28 tiles fixed (7 each of LIOI/RIOI/LIOB18/RIOB18_SING). (The dedicated
+`segbits_*_sing.db` are NOT consulted for aliased tiles, so this is a tilegrid
+fix, not a segbits one.) Follow-up: fix the generator (`fuzzers/005-tilegrid`)
+so a regenerated tilegrid doesn't reintroduce `start_offset 0`.
+
 ## Known remaining gap (worked around downstream, not yet fixed in DB)
 LVCMOS18 single-ended **input** on certain HP-bank sites (e.g. AU33) is missing
 segbit `bit_0042101c_063_18` and sets a spurious `IBUF_HP_BANK_GLUE` — the
