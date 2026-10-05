@@ -162,3 +162,34 @@ DOUTMUX feature and the cascade link was silently dropped.  Fix: remove `30_10`;
 the remaining `!30_51 30_52 !30_56 30_57` is distinct from every other DOUTMUX
 leg.  Found via the bit2verilog srl differential test (160-deep SRL, d3 diverged
 at cycle 129 = the first value needing the cross-slice hop).
+
+## LIOB18 STEPDOWN bit-free (2026-10-03)
+`LIOB18.IOB_Y{0,1}.*.STEPDOWN` was `!00_127`: a negated-only entry (no set bit,
+so segmatch found no distinguishing bit) at frame 0 / word 3 bit 31 of the IOB
+window.  On regular LIOB18 rows that bit aliases the neighbouring INT_L's word
+(e.g. LIOB18_X81Y143 vs INT_L_X32Y138 LH12.NW2END3 at (0x1000,78,31)), so
+fasm2frames raised FasmInconsistentBits for any design using that pip with a
+STEPDOWN IOB.  Tilegrid geometry is fine (IOB and INT_L legitimately share the
+0x1000 column).  Fix: dropped the segbits entries and declared the feature
+bit-free via ppips_liob18.db (`always`), as done for ZINV_D.  RIOB18 never
+carried it.  Checked on hardware (2026-10-05): the VC707 ethmin design, which has STEPDOWN
+IOBs beside the INT_L pip above, now builds and boots through the open flow.
+HCLK_IOI.STEPDOWN is also `!00_127` and may need the same treatment if it
+collides.
+
+## LIOB18 IOB_Y0.IN does not carry IOB_Y1's bit (2026-10-05)
+`LIOB18.IOB_Y0.LVCMOS12_LVCMOS15_LVCMOS18.IN` was `!39_01 38_126 39_127`.  39_01
+is one of IOB_Y1's two enable bits, so the entry only matched a tile whose
+IOB_Y1 receives nothing, and a tile with an input in each half could not be
+described.  Now `38_126 39_127`, as RIOB18 already had (the same correction as
+prjxray-db 43af59b).  Confirmed against Vivado: in LIOB18_X81Y128 (the VC707
+CPU_RESET tile) both halves have .IN set.  nextpnr relied on the old entry to
+write no .IN for such a tile, which left CPU_RESET disabled and the design
+held in reset; fixed there too.
+
+## BRAM_L_X114Y0 tilegrid entry restored (2026-10-05)
+The 2026-06-11 fix (`bits` filled from the column pattern) had been lost from
+xc7vx485t/tilegrid.json: BRAM_L_X114Y0 had `bits: {}` again, so any BRAM
+placed there lost every feature (fasm2frames: "Segment DB BRAM_L, key
+BRAM_L.RAMB18_Y1.ZSRVAL_A not found").  Re-applied: BLOCK_RAM 0x00C20500 /
+128 frames / 10 words, CLB_IO_CLK 0x00423900 / 28 frames / 10 words, offset 0.
